@@ -53,6 +53,8 @@ Stem and humanities started as separate factors. After removing g their scores c
 
 ## Limits
 
+- The shipped reference answers cover 12 of the 30 open-ended prompts, because free-tier quotas ran out while building them. Run `uv run gfb build-reference groq/qwen/qwen3.8-27b groq/openai/gpt-oss-120b` with fresh quota to cover all 30. The first model listed is the fixed opponent.
+
 - The reference models are 2023 to 2024 open models. Strong modern models sit near the top of this scale, and the adaptive step then picks the hardest questions.
 - Calibration used log-likelihood scoring with few-shot prompts. This tool asks zero-shot and reads a letter or number, so item parameters transfer only approximately.
 - Odd tasks and open-ended scores are reported apart from g. They need 30+ tested models before they can be calibrated into the factor model.
