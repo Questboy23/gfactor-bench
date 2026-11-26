@@ -1,7 +1,7 @@
 import numpy as np
 
 from gfactor_bench import generators
-from gfactor_bench.bank import factor_of, make_prompt, score
+from gfactor_bench.bank import make_prompt, score
 from gfactor_bench.judge import _winner, damage
 from gfactor_bench.runner import wilson90
 
@@ -20,12 +20,6 @@ def test_mc_shuffle_keeps_gold():
         p, gold, _ = make_prompt("harness_hendrycksTest_elementary_mathematics_5", row, np.random.default_rng(s))
         line = [ln for ln in p.splitlines() if ln.startswith(gold + ".")][0]
         assert line.endswith(" 4")
-
-
-def test_factor_map():
-    assert factor_of("harness_gsm8k_5") == "math"
-    assert factor_of("harness_hendrycksTest_college_physics_5") == "knowledge"
-    assert factor_of("harness_hendrycksTest_world_religions_5") == "knowledge"
 
 
 def test_generators_seeded_and_varied():

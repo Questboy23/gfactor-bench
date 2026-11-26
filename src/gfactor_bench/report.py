@@ -27,7 +27,7 @@ def _factor_chart(r):
     d = [r["factors"][f]["deviation"] for f in fs]
     lo = [r["factors"][f]["deviation"] - r["factors"][f]["ci90"][0] for f in fs]
     order = np.argsort(d)
-    fig, ax = plt.subplots(figsize=(6.5, 3.2))
+    fig, ax = plt.subplots(figsize=(7.5, 0.5 * len(fs) + 1.2))
     ax.barh([fs[i] for i in order], [d[i] for i in order], xerr=[lo[i] for i in order],
             color=["#3a7d44" if d[i] > 0 else "#b5523b" for i in order], capsize=3)
     ax.axvline(0, color="#444", lw=0.8)
@@ -39,7 +39,7 @@ def _factor_chart(r):
 def _corr_chart(r):
     fc = r["factor_correlations"]
     M = np.array(fc["matrix"])
-    fig, ax = plt.subplots(figsize=(4.8, 4))
+    fig, ax = plt.subplots(figsize=(1.0 * len(M) + 2.5, 1.0 * len(M) + 1.8))
     im = ax.imshow(M, vmin=0, vmax=1, cmap="Blues")
     ax.set_xticks(range(len(M)), fc["factors"], rotation=40, ha="right")
     ax.set_yticks(range(len(M)), fc["factors"])
@@ -55,12 +55,13 @@ def to_markdown(r):
     g = r["g"]
     lines = [f"# gfactor-bench report: {r['model']}", "",
              f"Seed {r['seed']}, {r['n_items']} calibrated questions, {r['seconds']} s, {r['api_errors']} API errors.", "",
-             "| Score | Value | 90% interval | Percentile vs 395 reference models |", "|---|---|---|---|",
-             f"| General factor (g) | {g['score']:.1f} | {g['ci90'][0]:.1f} to {g['ci90'][1]:.1f} | {g['percentile_vs_reference']:.0f} |",
-             f"| Spread across skills | {r['spread']['score']:.1f} | | {r['spread']['percentile_vs_reference']:.0f} |", "",
-             "## Skill factors", "", "| Factor | Index | Above or below g | 90% interval | Questions | Accuracy |", "|---|---|---|---|---|---|"]
+             "Scores are open-ended: 1000 is the average of 395 reference models, 200 points is one SD, no ceiling or floor.", "",
+             "| Score | Value | 90% interval |", "|---|---|---|",
+             f"| General factor (g) | {g['score']:.0f} | {g['ci90'][0]:.0f} to {g['ci90'][1]:.0f} |",
+             f"| Spread across skills | {r['spread']['score']:.0f} | |", "",
+             "## Skill factors (found from the data)", "", "| Factor | Score | Above or below g | 90% interval | Questions | Accuracy |", "|---|---|---|---|---|---|"]
     for f, v in sorted(r["factors"].items(), key=lambda kv: -kv[1]["deviation"]):
-        lines.append(f"| {f} | {v['index']:.1f} | {v['deviation']:+.1f} | {v['ci90'][0]:+.1f} to {v['ci90'][1]:+.1f} | {v['items']} | {v['accuracy']:.2f} |")
+        lines.append(f"| {f} | {v['index']:.0f} | {v['deviation']:+.0f} | {v['ci90'][0]:+.0f} to {v['ci90'][1]:+.0f} | {v['items']} | {v['accuracy']:.2f} |")
     o = r["odd_tasks"]
     lines += ["", "## Odd tasks (fresh, generated this run, not yet calibrated)", "",
               f"Accuracy {o['accuracy']:.2f} (90% interval {o['ci90'][0]:.2f} to {o['ci90'][1]:.2f}, n={o['n']}).", "",

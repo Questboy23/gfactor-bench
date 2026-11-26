@@ -4,17 +4,16 @@ from __future__ import annotations
 import argparse
 import json
 
-from .bank import FACTORS
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="gfb", description="Psychometric (IQ-style) test for AI models")
+    ap = argparse.ArgumentParser(prog="gfb", description="Psychometric test for AI models: open-ended g score, data-driven skill factors, spread")
     sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("test", help="test a model, e.g. ollama/qwen3.5:9b or groq/openai/gpt-oss-120b")
     t.add_argument("model")
     t.add_argument("--seed", type=int, help="default: a new random seed every run")
-    t.add_argument("--target-g", type=float, default=6.0, help="stop when g's 90%% interval is within +/- this many points")
-    t.add_argument("--target-factor", type=float, default=10.0, help="same for each skill factor")
+    t.add_argument("--target-g", type=float, default=80.0, help="stop when g's 90%% interval is within +/- this many points (200 points = 1 SD)")
+    t.add_argument("--target-factor", type=float, default=130.0, help="same for each skill factor")
     t.add_argument("--max-items", type=int, default=300)
     t.add_argument("--batch", type=int, default=15)
     t.add_argument("--odd", type=int, default=16, help="fresh generated odd tasks")
@@ -38,10 +37,10 @@ def main(argv=None):
                   judges=args.judges, workers=args.workers)
         path = write(res, args.out)
         g = res["g"]
-        print(f"\ng = {g['score']:.1f} (90% interval {g['ci90'][0]:.1f} to {g['ci90'][1]:.1f}), spread = {res['spread']['score']:.1f}")
-        for f in FACTORS:
+        print(f"\ng = {g['score']:.0f} (90% interval {g['ci90'][0]:.0f} to {g['ci90'][1]:.0f}), spread = {res['spread']['score']:.0f}")
+        for f in res["factors"]:
             v = res["factors"][f]
-            print(f"  {f:18s} {v['index']:6.1f}  ({v['deviation']:+.1f} vs g, 90% {v['ci90'][0]:+.1f} to {v['ci90'][1]:+.1f})")
+            print(f"  {f:45s} {v['index']:6.0f}  ({v['deviation']:+.0f} vs g, 90% {v['ci90'][0]:+.0f} to {v['ci90'][1]:+.0f})")
         print(f"report: {path}")
     elif args.cmd == "audit-judges":
         from .judge import DEFAULT_JUDGES, audit

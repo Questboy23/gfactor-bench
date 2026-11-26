@@ -11,11 +11,7 @@ from pathlib import Path
 import requests
 
 CACHE = Path.home() / ".cache" / "gfactor-bench" / "rows"
-# stem and humanities were fitted apart first; their residuals correlated 0.96, so they are one factor
-FACTORS = ["math", "knowledge", "commonsense", "truthfulness"]
 
-MATH = {"abstract_algebra", "college_mathematics", "elementary_mathematics", "high_school_mathematics",
-        "high_school_statistics", "formal_logic", "econometrics"}
 # leaderboard key -> (hf dataset, config, split, row format)
 FIXED = {
     "harness_arc_challenge_25": ("allenai/ai2_arc", "ARC-Challenge", "test", "arc"),
@@ -32,18 +28,6 @@ def source(key: str):
     subject = key.removeprefix("harness_hendrycksTest_").removesuffix("_5")
     return ("cais/mmlu", subject, "test", "mmlu")
 
-
-def factor_of(key: str) -> str:
-    if key == "harness_gsm8k_5":
-        return "math"
-    if key == "harness_arc_challenge_25":
-        return "knowledge"
-    if key in ("harness_hellaswag_10", "harness_winogrande_5"):
-        return "commonsense"
-    if key == "harness_truthfulqa_mc_0":
-        return "truthfulness"
-    subject = source(key)[1]
-    return "math" if subject in MATH else "knowledge"
 
 
 def guess_floor(key: str) -> float:

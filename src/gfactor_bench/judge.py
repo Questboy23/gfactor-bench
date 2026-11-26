@@ -24,7 +24,7 @@ DEFAULT_JUDGES = [
     "groq/qwen/qwen3.8-27b",
     "gemini/gemini-3.5-flash-lite",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
-    "ollama/gemma3:4b",
+    "ollama/qwen2.5-coder:7b",  # not gemma3: gemma3 wrote the reference answers, so it would judge its own work
 ]
 
 JUDGE_SYS = (
@@ -69,27 +69,32 @@ def load_reference():
     return json.loads(f.read_text()) if f.exists() else {}
 
 
-def build_reference(models, prompts, workers=6):
-    """Pool of standard answers per prompt. The first model's answer is the fixed opponent."""
-    jobs = [(m, p) for m in models for p in prompts]
-    done = [0]
+def build_reference(models, prompts):
+    """Pool of standard answers per prompt. The first model's answer is the fixed opponent.
+    Each model runs in its own lane (local models one request at a time, APIs three) so a slow
+    local model never blocks the fast APIs."""
+    import threading
 
-    def run(job):
-        m, p = job
-        out = chat(m, p["prompt"], max_tokens=1200, temperature=0.7, retries=3)
-        done[0] += 1
-        if done[0] % 10 == 0:
-            print(f"reference answers {done[0]}/{len(jobs)}", flush=True)
-        return m, p["id"], _clean(out)
+    results, lock = [], threading.Lock()
 
-    with ThreadPoolExecutor(workers) as ex:
-        results = list(ex.map(run, jobs))
+    def lane(m):
+        def one(p):
+            out = chat(m, p["prompt"], max_tokens=700, temperature=0.7, retries=3)
+            with lock:
+                results.append((m, p["id"], _clean(out)))
+                print(f"{m}: {sum(r[0] == m for r in results)}/{len(prompts)}", flush=True)
+        with ThreadPoolExecutor(1 if m.startswith("ollama") else 3) as ex:
+            list(ex.map(one, prompts))
+
+    with ThreadPoolExecutor(len(models)) as ex:
+        list(ex.map(lane, models))
     ref = {}
     for m, pid, out in results:
-        if not out.startswith("[error"):
+        if out and not out.startswith("[error"):
             ref.setdefault(pid, {"answers": {}})["answers"][m] = out
     ref = {pid: v for pid, v in ref.items() if models[0] in v["answers"]}  # opponent answer is required
-    for pid, v in ref.items():
+    for v in ref.values():
+        v["answers"] = {m: v["answers"][m] for m in models if m in v["answers"]}
         v["embeddings"] = embed(list(v["answers"].values()))
         v["opponent"] = models[0]
     (DATA / "reference_answers.json").write_text(json.dumps(ref))

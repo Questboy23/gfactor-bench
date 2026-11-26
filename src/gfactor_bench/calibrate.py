@@ -10,7 +10,8 @@ from pathlib import Path
 import numpy as np
 import requests
 
-from .bank import FACTORS, factor_of, guess_floor
+from .bank import guess_floor
+from .discover import discover
 from .irt import fit_bifactor
 
 LB_URL = "https://github.com/felipemaiapolo/tinyBenchmarks/raw/main/tutorials/data/lb.pickle"
@@ -52,10 +53,13 @@ def main(argv=None):
     cache = Path.home() / ".cache" / "gfactor-bench" / "lb.pickle"
     lb = load_leaderboard(Path(argv[0]) if argv else cache)
     Y, keys, idxs = build_matrix(lb)
-    fidx = np.array([FACTORS.index(factor_of(k)) for k in keys])
+    d = discover(Y, keys)
+    sub_f = dict(zip(d["subjects"], d["subject_factor"]))
+    fidx = np.array([sub_f[k] for k in keys])
     c = np.array([guess_floor(k) for k in keys])
-    print(f"matrix {Y.shape}, factors {np.bincount(fidx).tolist()}")
-    fit = fit_bifactor(Y, fidx, c, len(FACTORS), iters=1000)
+    print(f"matrix {Y.shape}; {d['n_factors']} factors found: {d['factor_names']}")
+    print("eigenvalues", np.round(d["eigen"], 2), "null 95%", np.round(d["null95"], 2))
+    fit = fit_bifactor(Y, fidx, c, d["n_factors"], iters=600)
     DATA.mkdir(exist_ok=True)
     np.savez_compressed(
         DATA / "calibration.npz",
@@ -64,6 +68,7 @@ def main(argv=None):
         ref_theta_g=fit["theta_g"], ref_theta_s=fit["theta_s"], ref_models=np.array(lb["models"]),
         ref_subscores=subscores(Y, keys),
         subscore_names=np.array(sorted(set(keys))),
+        factor_names=np.array(d["factor_names"]), subject_factor=d["subject_factor"],
     )
     print("saved", DATA / "calibration.npz")
 
