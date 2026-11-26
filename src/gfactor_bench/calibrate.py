@@ -50,7 +50,7 @@ def build_matrix(lb):
 
 
 def main(argv=None):
-    argv = argv or sys.argv[1:]
+    argv = sys.argv[1:] if argv is None else argv  # [] from the CLI means the default cache path
     if argv[:1] == ["frontier"]:
         return frontier()
     cache = Path.home() / ".cache" / "gfactor-bench" / "lb.pickle"

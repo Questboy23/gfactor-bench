@@ -68,7 +68,7 @@ g and factor scores: 1000 = reference average, 200 points = 1 SD, unbounded. Fac
 
 Missing data is handled throughout. A model not tested on a question is left out of that question's likelihood, and two subjects' correlation counts only when at least 20 models took both. In the frontier bank only 12 models appear on both MathArena and LiveBench, so factors are found within each leaderboard: 6 in MathArena, 1 in LiveBench. Scores in [0, 1] work as soft labels: MathArena averages several attempts per problem and scores proofs as judge points over maximum points.
 
-On the 395 open-bank reference models this finds 6 factors. g matches overall accuracy at r = 0.988, and each factor score matches its own leftover accuracy at r = 0.82 to 1.00.
+On the 395 open-bank reference models this finds 6 factors. g matches overall accuracy at r = 0.979, and each factor score matches its own leftover accuracy at r = 1.00.
 
 A simulated test with 3 planted skill groups recovers all 3 exactly.
 
