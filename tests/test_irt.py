@@ -22,6 +22,7 @@ def test_fit_recovers_g():
     assert np.corrcoef(fit["theta_g"], tg)[0, 1] > 0.9
     for f in range(F):
         assert np.corrcoef(fit["theta_s"][:, f], ts[:, f])[0, 1] > 0.5
+        assert abs(np.corrcoef(fit["theta_s"][:, f], fit["theta_g"])[0, 1]) < 0.05  # bifactor: orthogonal to g
 
 
 def test_intervals_cover_about_90_percent():

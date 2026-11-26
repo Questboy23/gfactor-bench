@@ -56,27 +56,52 @@ def guess_floor(key: str) -> float:
     return {"winogrande": 0.5, "gsm8k": 0.0, "truthfulqa": 0.0}.get(fmt, 0.25)
 
 
-def fetch_row(key: str, idx: int) -> dict:
-    ds, cfg, split, _ = source(key)
-    f = CACHE / ds.replace("/", "__") / cfg / f"{split}_{idx}.json"
-    if f.exists():
-        return json.loads(f.read_text())
-    url = "https://datasets-server.huggingface.co/rows"
-    for attempt in range(4):
-        r = requests.get(url, params={"dataset": ds, "config": cfg, "split": split, "offset": idx, "length": 1}, timeout=30)
+PAGE = 100
+
+
+def _hf_headers():
+    import os
+    tok = os.environ.get("HF_TOKEN")
+    f = Path.home() / ".cache" / "huggingface" / "token"
+    if not tok and f.exists():
+        tok = f.read_text().strip()
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
+
+
+def _fetch_page(ds, cfg, split, page):
+    """One request returns 100 rows; all are cached, so later draws from the same page are free."""
+    d = CACHE / ds.replace("/", "__") / cfg
+    marker = d / f"{split}_page{page}.done"
+    if marker.exists():
+        return
+    import time
+    for attempt in range(8):
+        r = requests.get("https://datasets-server.huggingface.co/rows", headers=_hf_headers(), timeout=60,
+                         params={"dataset": ds, "config": cfg, "split": split, "offset": page * PAGE, "length": PAGE})
         if r.status_code == 200:
-            row = r.json()["rows"][0]["row"]
-            f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(json.dumps(row))
-            return row
-        import time
-        time.sleep(2 ** attempt)
+            d.mkdir(parents=True, exist_ok=True)
+            for item in r.json()["rows"]:
+                (d / f"{split}_{item['row_idx']}.json").write_text(json.dumps(item["row"]))
+            marker.touch()
+            return
+        wait = float(r.headers.get("Retry-After", 0) or 0) or min(60, 2 ** attempt)
+        time.sleep(wait)
     r.raise_for_status()
 
 
-def fetch_rows(pairs, workers=16):
+def fetch_row(key: str, idx: int) -> dict:
+    ds, cfg, split, _ = source(key)
+    f = CACHE / ds.replace("/", "__") / cfg / f"{split}_{idx}.json"
+    if not f.exists():
+        _fetch_page(ds, cfg, split, idx // PAGE)
+    return json.loads(f.read_text())
+
+
+def fetch_rows(pairs, workers=4):
+    pages = sorted({(*source(k)[:3], i // PAGE) for k, i in pairs})
     with ThreadPoolExecutor(workers) as ex:
-        return list(ex.map(lambda kv: fetch_row(*kv), pairs))
+        list(ex.map(lambda p: _fetch_page(*p), pages))
+    return [fetch_row(k, i) for k, i in pairs]
 
 
 MC_INSTR = "Answer the multiple-choice question. Think briefly if needed, then end with a final line 'Answer: X' where X is the letter."

@@ -55,7 +55,7 @@ def main(argv=None):
     fidx = np.array([FACTORS.index(factor_of(k)) for k in keys])
     c = np.array([guess_floor(k) for k in keys])
     print(f"matrix {Y.shape}, factors {np.bincount(fidx).tolist()}")
-    fit = fit_bifactor(Y, fidx, c, len(FACTORS), iters=1500)
+    fit = fit_bifactor(Y, fidx, c, len(FACTORS), iters=1000)
     DATA.mkdir(exist_ok=True)
     np.savez_compressed(
         DATA / "calibration.npz",

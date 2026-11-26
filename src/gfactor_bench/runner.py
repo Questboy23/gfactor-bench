@@ -56,7 +56,7 @@ def run(model, seed=None, target_g=6.0, target_factor=10.0, max_items=300, batch
     L = loading_matrix(cal["a_g"], cal["a_s"], cal["fidx"], F)
     b, c = cal["b"].astype(float), cal["c"].astype(float)
     pool = np.flatnonzero(rng.random(len(b)) < pool_frac)  # a different random slice of the bank each run
-    asked, ys, log_items = [], [], []
+    asked, ys, log_items, tried = [], [], [], set()
     t0 = time.time()
 
     def ask(idx):
@@ -65,32 +65,38 @@ def run(model, seed=None, target_g=6.0, target_factor=10.0, max_items=300, batch
         prompts = [make_prompt(k, r, rng) for (k, _), r in zip(pairs, rows)]
         outs = chat_many(model, [p for p, _, _ in prompts], workers=workers, max_tokens=2048)
         for j, (k, i), (p, gold, kind), o in zip(idx, pairs, prompts, outs):
+            err = o.startswith("[error")
             y = score(o, gold, kind)
-            asked.append(j)
-            ys.append(y)
+            if not err:  # an API failure says nothing about ability; leave it out of the estimate
+                asked.append(j)
+                ys.append(y)
+            tried.add(j)
             log_items.append({"key": k, "row": i, "factor": FACTORS[cal["fidx"][j]], "gold": gold, "correct": y,
-                              "error": o.startswith("[error"), "response_tail": o[-200:]})
+                              "error": err, "response_tail": o[-200:]})
 
     start = [int(j) for f in range(F) for j in rng.choice(pool[cal["fidx"][pool] == f], start_per_factor, replace=False)]
     ask(start)
     while True:
-        A = np.array(asked)
+        if not asked:
+            raise RuntimeError(f"every request to {model} failed; first error: {log_items[0]['response_tail']}")
+        A = np.array(asked, dtype=int)
         th, cov = estimate_theta(L[A], b[A], c[A], np.array(ys, float))
         g, g_hw, s, s_hw = to_points(th, cov, sc)
         ratios = np.concatenate([[g_hw / target_g], s_hw / target_factor])
         log(f"items {len(asked)}  g {g:.1f} ±{g_hw:.1f}  widest {['g', *FACTORS][int(ratios.argmax())]} ±{max(g_hw, *s_hw):.1f}  {time.time() - t0:.0f}s")
-        if ratios.max() <= 1 or len(asked) >= max_items:
+        if ratios.max() <= 1 or len(tried) >= max_items:
             break
         dim = int(ratios.argmax())
-        cand = np.setdiff1d(pool, A)
+        cand = np.setdiff1d(pool, np.array(sorted(tried)))
         if dim > 0:
             cand = cand[cal["fidx"][cand] == dim - 1]
-        ask(select_items(L, b, c, th, cov, cand, dim, min(batch, max_items - len(asked)), rng))
+        ask(select_items(L, b, c, th, cov, cand, dim, min(batch, max_items - len(tried)), rng))
 
     # fresh odd tasks
     odd = generators.sample(rng, n_odd)
     outs = chat_many(model, [p for _, p, _, _ in odd], workers=workers, max_tokens=2048)
-    odd_res = [{"task": n, "gold": g_, "correct": score(o, g_, k), "response_tail": o[-200:]} for (n, _, g_, k), o in zip(odd, outs)]
+    odd_res = [{"task": n, "gold": g_, "correct": score(o, g_, k), "response_tail": o[-200:]}
+               for (n, _, g_, k), o in zip(odd, outs) if not o.startswith("[error")]
     k_ok = sum(r["correct"] for r in odd_res)
 
     open_res = None
@@ -141,8 +147,8 @@ def summarize(model, seed, cal, sc, th, cov, asked, ys, log_items, odd_res, k_ok
         "g": {"score": float(g), "ci90": [float(g - g_hw), float(g + g_hw)],
               "percentile_vs_reference": float((ref_g < g).mean() * 100)},
         "factors": {f: {"deviation": float(s[i]), "ci90": [float(s[i] - s_hw[i]), float(s[i] + s_hw[i])],
-                        "index": float(g + s[i]), "items": int(sum(x["factor"] == f for x in log_items)),
-                        "accuracy": float(np.mean([x["correct"] for x in log_items if x["factor"] == f] or [np.nan]))}
+                        "index": float(g + s[i]), "items": int(sum(x["factor"] == f and not x["error"] for x in log_items)),
+                        "accuracy": float(np.mean([x["correct"] for x in log_items if x["factor"] == f and not x["error"]] or [np.nan]))}
                     for i, f in enumerate(FACTORS)},
         "spread": {"score": spread, "raw_sd": float(s.std()),
                    "percentile_vs_reference": float((ref_spread < spread).mean() * 100)},
