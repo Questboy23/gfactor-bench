@@ -1,0 +1,75 @@
+{
+ "judges": {
+  "groq/openai/gpt-oss-120b": {
+   "planted_error_rate": 0.0,
+   "consensus_bias": -0.5,
+   "weight": 0.0
+  },
+  "groq/qwen/qwen3.8-27b": {
+   "planted_error_rate": 0.0,
+   "consensus_bias": 0.0,
+   "weight": 1
+  },
+  "gemini/gemini-3.5-flash-lite": {
+   "planted_error_rate": 0.041666666666666664,
+   "consensus_bias": 0.33333333333333337,
+   "weight": 0.30555555555555547
+  },
+  "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
+   "planted_error_rate": null,
+   "consensus_bias": null,
+   "weight": 1
+  },
+  "openrouter/baidu/ernie-5.5-flash-preview:free": {
+   "planted_error_rate": null,
+   "consensus_bias": null,
+   "weight": 1
+  }
+ },
+ "error_correlation": [
+  [
+   NaN,
+   NaN,
+   NaN,
+   NaN,
+   NaN
+  ],
+  [
+   NaN,
+   NaN,
+   NaN,
+   NaN,
+   NaN
+  ],
+  [
+   NaN,
+   NaN,
+   0.9999999999999998,
+   NaN,
+   NaN
+  ],
+  [
+   NaN,
+   NaN,
+   NaN,
+   NaN,
+   NaN
+  ],
+  [
+   NaN,
+   NaN,
+   NaN,
+   NaN,
+   NaN
+  ]
+ ],
+ "judge_order": [
+  "groq/openai/gpt-oss-120b",
+  "groq/qwen/qwen3.8-27b",
+  "gemini/gemini-3.5-flash-lite",
+  "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+  "openrouter/baidu/ernie-5.5-flash-preview:free"
+ ],
+ "n_planted": 12,
+ "n_flips": 6
+}

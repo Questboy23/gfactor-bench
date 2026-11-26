@@ -58,6 +58,17 @@ A simulated test with 3 planted skill groups recovers all 3 exactly.
 6. **Novelty.** Distance of the answer's embedding from a pool of standard answers to the same prompt. It adds to the score only when the answer also beats the reference, so odd but bad answers earn nothing.
 7. **Judge audit** (`gfb audit-judges`). Each judge sees planted pairs where one side is a damaged copy (a dropped passage, shuffled sentences, a wrong number), so the right pick is known. This gives each judge's error rate and the correlation of errors between judges. Consensus pairs keep the same evidence and flip only the conclusion between consensus and contrarian. The score shift is that judge's consensus bias. Judge weights drop with error rate and bias.
 
+### First judge audit (shipped in `data/judge_audit.json`)
+
+| Judge | Planted-error rate | Consensus bias | Weight |
+|---|---|---|---|
+| groq gpt-oss-120b | 0% | -0.50 (picked the consensus version every time) | 0 |
+| groq qwen3.8-27b | 0% | 0.00 | 1.00 |
+| gemini-3.5-flash-lite | 4% | +0.33 (leans contrarian) | 0.31 |
+| openrouter nemotron, ernie | not measured (free quota used up) | | 1 until audited |
+
+Error correlation between judges is undefined so far: with 0 to 1 errors per judge there is no variance. More planted pairs (`-n 50`) are needed to measure it.
+
 ## Report
 
 `reports/<model>_<seed>.html` (also `.md` and `.json`) contains g and spread with 90% intervals, each skill factor's score and deviation from g, odd-task and open-ended results, a judge table, the 5 best and 5 worst areas versus what g predicts, a factor chart, and a skill correlation heatmap across the reference models.
