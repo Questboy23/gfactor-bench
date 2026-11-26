@@ -24,8 +24,8 @@ def test_mc_shuffle_keeps_gold():
 
 def test_factor_map():
     assert factor_of("harness_gsm8k_5") == "math"
-    assert factor_of("harness_hendrycksTest_college_physics_5") == "stem"
-    assert factor_of("harness_hendrycksTest_world_religions_5") == "humanities_social"
+    assert factor_of("harness_hendrycksTest_college_physics_5") == "knowledge"
+    assert factor_of("harness_hendrycksTest_world_religions_5") == "knowledge"
 
 
 def test_generators_seeded_and_varied():

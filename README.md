@@ -1,11 +1,11 @@
 # gfactor-bench
 
-An IQ-style test for AI models. It reports a general factor (g), five skill factors, a spread score, and a 90% interval on each, the way psychometric tests report a full-scale score and index scores.
+An IQ-style test for AI models. It reports a general factor (g), four skill factors, a spread score, and a 90% interval on each, the way psychometric tests report a full-scale score and index scores.
 
 ```
 g = 112.4 (90% interval 107.0 to 117.8), spread = 4.1
   math                118.0  (+5.6 vs g, 90% -3.1 to +14.3)
-  stem                113.1  (+0.7 vs g, ...)
+  knowledge           113.1  (+0.7 vs g, ...)
   ...
 report: reports/<model>_<seed>.html
 ```
@@ -27,14 +27,17 @@ The open-ended section uses a judge panel of free models (Groq, Gemini, OpenRout
 
 | Part | Source | How it is scored |
 |---|---|---|
-| g and 5 skill factors (math, stem, humanities_social, commonsense, truthfulness) | 28,659 Open LLM Leaderboard questions (MMLU, ARC, HellaSwag, Winogrande, TruthfulQA, GSM8K) | Bifactor item response model calibrated on 395 models |
-| Spread | the 5 skill factors | SD of skill deviations from g, minus the part measurement noise explains |
+| g and 4 skill factors (math, knowledge, commonsense, truthfulness) | 28,659 Open LLM Leaderboard questions (MMLU, ARC, HellaSwag, Winogrande, TruthfulQA, GSM8K) | Bifactor item response model calibrated on 395 models |
+| Spread | the 4 skill factors | SD of skill deviations from g, minus the part measurement noise explains |
 | Odd tasks | 8 generators: letter counting, ciphers, big arithmetic, sorting, word reversal, weekday math, grid positions, an invented language | Exact match, fresh items every run |
 | Open-ended | 30 prompts: poetry, advice, ideas, explanations | Pairwise judge panel versus reference answers, plus a novelty bonus |
 
 Scores are on an IQ-style scale: 100 is the mean of the 395 reference models and 15 points is one SD.
 
 ## How it works
+
+Stem and humanities started as separate factors. After removing g their scores correlated 0.96 across the 395 models, so they were merged into one knowledge factor.
+
 
 1. **Calibration.** `tinyBenchmarks` (Polo et al. 2024, MIT) published right/wrong results of 395 models on every leaderboard question. `gfb calibrate` fits a bifactor 3PL model to that matrix: each question loads on g and on one skill factor, with a fixed guessing floor. The fitted parameters ship in `src/gfactor_bench/data/calibration.npz`, so users never download the matrix.
 2. **Random draw.** Each run uses a new seed (saved in the report). It takes a random 40% slice of the bank, starts with 4 random questions per factor, and shuffles answer choices so memorized letters do not help.

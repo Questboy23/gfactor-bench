@@ -11,16 +11,11 @@ from pathlib import Path
 import requests
 
 CACHE = Path.home() / ".cache" / "gfactor-bench" / "rows"
-FACTORS = ["math", "stem", "humanities_social", "commonsense", "truthfulness"]
+# stem and humanities were fitted apart first; their residuals correlated 0.96, so they are one factor
+FACTORS = ["math", "knowledge", "commonsense", "truthfulness"]
 
 MATH = {"abstract_algebra", "college_mathematics", "elementary_mathematics", "high_school_mathematics",
         "high_school_statistics", "formal_logic", "econometrics"}
-STEM = {"anatomy", "astronomy", "college_biology", "college_chemistry", "college_computer_science",
-        "college_medicine", "college_physics", "computer_security", "conceptual_physics",
-        "electrical_engineering", "high_school_biology", "high_school_chemistry",
-        "high_school_computer_science", "high_school_physics", "machine_learning", "medical_genetics",
-        "clinical_knowledge", "nutrition", "virology", "professional_medicine", "human_aging"}
-
 # leaderboard key -> (hf dataset, config, split, row format)
 FIXED = {
     "harness_arc_challenge_25": ("allenai/ai2_arc", "ARC-Challenge", "test", "arc"),
@@ -42,13 +37,13 @@ def factor_of(key: str) -> str:
     if key == "harness_gsm8k_5":
         return "math"
     if key == "harness_arc_challenge_25":
-        return "stem"
+        return "knowledge"
     if key in ("harness_hellaswag_10", "harness_winogrande_5"):
         return "commonsense"
     if key == "harness_truthfulqa_mc_0":
         return "truthfulness"
     subject = source(key)[1]
-    return "math" if subject in MATH else "stem" if subject in STEM else "humanities_social"
+    return "math" if subject in MATH else "knowledge"
 
 
 def guess_floor(key: str) -> float:

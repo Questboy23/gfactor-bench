@@ -69,18 +69,29 @@ def load_reference():
     return json.loads(f.read_text()) if f.exists() else {}
 
 
-def build_reference(models, prompts, workers=4):
+def build_reference(models, prompts, workers=6):
     """Pool of standard answers per prompt. The first model's answer is the fixed opponent."""
+    jobs = [(m, p) for m in models for p in prompts]
+    done = [0]
+
+    def run(job):
+        m, p = job
+        out = chat(m, p["prompt"], max_tokens=1200, temperature=0.7, retries=3)
+        done[0] += 1
+        if done[0] % 10 == 0:
+            print(f"reference answers {done[0]}/{len(jobs)}", flush=True)
+        return m, p["id"], _clean(out)
+
+    with ThreadPoolExecutor(workers) as ex:
+        results = list(ex.map(run, jobs))
     ref = {}
-    for m in models:
-        outs = [chat(m, p["prompt"], max_tokens=1200, temperature=0.7) for p in prompts] if workers == 1 else \
-            list(ThreadPoolExecutor(workers).map(lambda p: chat(m, p["prompt"], max_tokens=1200, temperature=0.7), prompts))
-        for p, o in zip(prompts, outs):
-            ref.setdefault(p["id"], {"answers": {}})["answers"][m] = _clean(o)
-    for p in prompts:
-        ans = list(ref[p["id"]]["answers"].values())
-        ref[p["id"]]["embeddings"] = embed(ans)
-        ref[p["id"]]["opponent"] = models[0]
+    for m, pid, out in results:
+        if not out.startswith("[error"):
+            ref.setdefault(pid, {"answers": {}})["answers"][m] = out
+    ref = {pid: v for pid, v in ref.items() if models[0] in v["answers"]}  # opponent answer is required
+    for pid, v in ref.items():
+        v["embeddings"] = embed(list(v["answers"].values()))
+        v["opponent"] = models[0]
     (DATA / "reference_answers.json").write_text(json.dumps(ref))
     return ref
 
