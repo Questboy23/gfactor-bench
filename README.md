@@ -34,15 +34,19 @@ Its `bayesian.py` already returns equal-tailed intervals at any probability.
 
 ## Estimate
 
-| Part | Agent hours |
-|---|---|
-| Fork ECI, item-level data loader | 3 to 4 |
-| Bifactor model in PyMC | 3 to 5 |
-| Sampler and template generators | 3 |
-| Inspect AI runner | 3 |
-| Adaptive loop | 2 |
-| Report | 2 |
-| Interval check on simulated data | 2 |
-| Total | 18 to 21 |
+Almost every part already exists, so the build is mostly glue code.
 
-First working version (g plus 90% interval, 3 benchmarks, adaptive) in about 6 hours.
+| Part | Existing tool | Agent time |
+|---|---|---|
+| Bifactor IRT fit, g plus skill factors | R `mirt` (`bfactor`) | 20 min |
+| Adaptive testing, stop when interval is narrow, randomesque pick | R `mirtCAT` | 20 min |
+| Item parameters for Open LLM Leaderboard questions | `tinyBenchmarks` | 15 min |
+| Random draws per run | Inspect AI `shuffle=True, seed=` and `numpy.random.default_rng` | 10 min |
+| Odd tasks | BIG-bench via Inspect evals | 15 min |
+| Running models | Inspect AI with OpenRouter or Ollama | 20 min |
+| 90% intervals, spread, report | mirt standard errors times 1.645, matplotlib | 30 min |
+| Interval check on simulated models | `mirt::simdata` | 20 min |
+| Total | | 2.5 to 3.5 hours |
+
+Real time depends more on downloads (several GB of per-question data) and API rate limits than on code.
+ECI's PyMC fit stays as a cross-check for g.
