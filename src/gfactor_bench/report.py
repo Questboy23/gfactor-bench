@@ -68,10 +68,25 @@ def to_markdown(r):
               "| Task | Accuracy |", "|---|---|"] + [f"| {k} | {v:.2f} |" for k, v in sorted(o["by_task"].items())]
     oe = r.get("open_ended")
     if oe:
-        lines += ["", "## Open-ended tasks (judge panel)", "",
+        sd = oe["judge_sd"]
+        agree = "high" if sd < 0.10 else "medium" if sd < 0.25 else "low"
+        lines += ["", "## Qualitative work (judged by AI models)", "",
+                  "This section is qualitative: poetry, advice, ideas and explanations graded by other AI models, "
+                  "not by right or wrong answers. Treat it with more skepticism than the scores above. "
+                  "The judges' standard deviation shows how much they disagreed; high disagreement means the number is weak.", "",
+                  f"Judge agreement: **{agree}** (SD of judge win rates {sd:.2f}).", "",
                   f"Win rate vs reference answers {oe['win_rate']:.2f}. Score with novelty bonus {oe['score']:.2f} "
-                  f"(90% interval {oe['ci90'][0]:.2f} to {oe['ci90'][1]:.2f}). Novelty {oe['novelty']:.3f}. "
-                  f"Judge disagreement (SD of judge means) {oe['judge_sd']:.2f}.", "", "| Judge | Win rate |", "|---|---|"]
+                  f"(90% interval {oe['ci90'][0]:.2f} to {oe['ci90'][1]:.2f}). Novelty {oe['novelty']:.3f}.", "",
+                  "| Category | Prompts | Win rate | Mean judge SD per prompt |", "|---|---|---|---|"]
+        cats = {}
+        for it in oe["items"]:
+            cats.setdefault(it["cat"], []).append(it)
+        for c, its in sorted(cats.items()):
+            wr = [x["win_rate"] for x in its if x["win_rate"] == x["win_rate"]]
+            sds = [x["judge_sd"] for x in its if x["judge_sd"] is not None]
+            lines.append(f"| {c} | {len(its)} | {sum(wr) / len(wr) if wr else float('nan'):.2f} | "
+                         f"{f"{sum(sds) / len(sds):.2f}" if sds else "n/a"} |")
+        lines += ["", "| Judge | Win rate |", "|---|---|"]
         lines += [f"| {j} | {'n/a' if v is None else f'{v:.2f}'} |" for j, v in oe["judge_means"].items()]
     res = r["residuals"]
     if res:
