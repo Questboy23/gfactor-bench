@@ -67,7 +67,7 @@ def run(model, seed=None, target_g=80.0, target_factor=130.0, max_items=300, bat
         pairs = [(str(cal["keys"][j]), int(cal["idxs"][j])) for j in idx]
         rows = fetch_rows(pairs)
         prompts = [make_prompt(k, r, rng) for (k, _), r in zip(pairs, rows)]
-        outs = chat_many(model, [p for p, _, _ in prompts], workers=workers, max_tokens=2048)
+        outs = chat_many(model, [p for p, _, _ in prompts], workers=workers, max_tokens=4096)
         for j, (k, i), (p, gold, kind), o in zip(idx, pairs, prompts, outs):
             err = o.startswith("[error")
             y = score(o, gold, kind)
@@ -98,7 +98,7 @@ def run(model, seed=None, target_g=80.0, target_factor=130.0, max_items=300, bat
 
     # fresh odd tasks
     odd = generators.sample(rng, n_odd)
-    outs = chat_many(model, [p for _, p, _, _ in odd], workers=workers, max_tokens=2048)
+    outs = chat_many(model, [p for _, p, _, _ in odd], workers=workers, max_tokens=4096)
     odd_res = [{"task": n, "gold": g_, "correct": score(o, g_, k), "response_tail": o[-200:]}
                for (n, _, g_, k), o in zip(odd, outs) if not o.startswith("[error")]
     k_ok = sum(r["correct"] for r in odd_res)

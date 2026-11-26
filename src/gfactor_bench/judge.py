@@ -24,8 +24,8 @@ DEFAULT_JUDGES = [
     "groq/qwen/qwen3.8-27b",
     "gemini/gemini-3.5-flash-lite",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
-    "ollama/qwen2.5-coder:7b",  # not gemma3: gemma3 wrote the reference answers, so it would judge its own work
-]
+    "openrouter/baidu/ernie-5.5-flash-preview:free",
+]  # the reference opponent (groq gpt-oss-20b) is not a judge, so no judge grades its own answers
 
 JUDGE_SYS = (
     "You are a blind evaluator. Judge only the quality of the work: correctness, depth of reasoning, "
@@ -58,8 +58,8 @@ def _winner(text: str):
 
 def compare(judge, task, x, y):
     """Returns P(x better than y) from this judge over both orders: 1, 0.5 or 0 (None if unusable)."""
-    r1 = _winner(chat(judge, PAIR.format(task=task, a=_clean(x), b=_clean(y)), max_tokens=1500, system=JUDGE_SYS))
-    r2 = _winner(chat(judge, PAIR.format(task=task, a=_clean(y), b=_clean(x)), max_tokens=1500, system=JUDGE_SYS))
+    r1 = _winner(chat(judge, PAIR.format(task=task, a=_clean(x), b=_clean(y)), max_tokens=1500, system=JUDGE_SYS, reasoning_effort="low"))
+    r2 = _winner(chat(judge, PAIR.format(task=task, a=_clean(y), b=_clean(x)), max_tokens=1500, system=JUDGE_SYS, reasoning_effort="low"))
     votes = [v for v in ((r1 == 1) if r1 else None, (r2 == 2) if r2 else None) if v is not None]
     return float(np.mean(votes)) if votes else None
 
@@ -79,7 +79,7 @@ def build_reference(models, prompts):
 
     def lane(m):
         def one(p):
-            out = chat(m, p["prompt"], max_tokens=700, temperature=0.7, retries=3)
+            out = chat(m, p["prompt"], max_tokens=2000, temperature=0.7, retries=3, reasoning_effort="low")
             with lock:
                 results.append((m, p["id"], _clean(out)))
                 print(f"{m}: {sum(r[0] == m for r in results)}/{len(prompts)}", flush=True)

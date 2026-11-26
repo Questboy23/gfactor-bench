@@ -11,13 +11,18 @@ litellm.suppress_debug_info = True
 litellm.drop_params = True
 
 
-def chat(model: str, prompt: str, max_tokens=1024, temperature=0.0, retries=4, system=None) -> str:
+def chat(model: str, prompt: str, max_tokens=1024, temperature=0.0, retries=4, system=None, reasoning_effort=None) -> str:
     msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
     err = None
     for attempt in range(retries):
         try:
-            r = litellm.completion(model=model, messages=msgs, max_tokens=max_tokens, temperature=temperature, timeout=180)
-            return r.choices[0].message.content or ""
+            kw = {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
+            r = litellm.completion(model=model, messages=msgs, max_tokens=max_tokens, temperature=temperature, timeout=180, **kw)
+            text = r.choices[0].message.content or ""
+            if text.strip():
+                return text
+            # reasoning models can spend the whole budget thinking and return no text: an error, not a wrong answer
+            err = RuntimeError(f"empty response (finish_reason={r.choices[0].finish_reason})")
         except Exception as e:  # rate limits and timeouts on free tiers: back off and retry
             err = e
             time.sleep(min(60, 3 * 2**attempt))

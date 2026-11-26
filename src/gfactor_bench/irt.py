@@ -51,6 +51,13 @@ def _fit(Y, fidx, c, n_factors, iters, lr, seed, log, item_w=None, use_s=True, i
     p["tg"] = ((tot - tot.mean()) / (tot.std() + 1e-9)).astype(np.float32)
     if init is not None:
         p["tg"] = init["theta_g"].astype(np.float32)
+        # start each specific factor at its observed leftover: factor accuracy (logit) minus what g predicts
+        for f in range(n_factors):
+            a = Y[:, fidx == f].mean(1)
+            lg = np.log((a + 0.01) / (1.01 - a))
+            X = np.stack([np.ones(N), p["tg"], p["tg"] ** 2], 1)
+            r = lg - X @ np.linalg.lstsq(X, lg, rcond=None)[0]
+            p["ts"][:, f] = ((r - r.mean()) / (r.std() + 1e-9)).astype(np.float32)
         p["ag"] = np.log(np.expm1(np.maximum(init["a_g"], 1e-4))).astype(np.float32)
         p["b"] = init["b"].astype(np.float32)
     iw = np.ones(J, np.float32) if item_w is None else item_w.astype(np.float32)
@@ -70,8 +77,9 @@ def _fit(Y, fidx, c, n_factors, iters, lr, seed, log, item_w=None, use_s=True, i
             "as": (G * TS).sum(0) * _sig(p["as"]) - (p["as"] - 0.5),
             "b": -G.sum(0) - p["b"] / 4.0,
         }
-        if fix_g:
+        if fix_g:  # stage 2: person scores stay at g and the observed leftovers; only question parameters move
             grads["tg"] = np.zeros_like(grads["tg"])
+            grads["ts"] = np.zeros_like(grads["ts"])
         if not use_s:
             grads["ts"] = np.zeros_like(grads["ts"])
             grads["as"] = np.zeros_like(grads["as"])

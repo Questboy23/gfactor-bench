@@ -59,7 +59,7 @@ def main(argv=None):
     c = np.array([guess_floor(k) for k in keys])
     print(f"matrix {Y.shape}; {d['n_factors']} factors found: {d['factor_names']}")
     print("eigenvalues", np.round(d["eigen"], 2), "null 95%", np.round(d["null95"], 2))
-    fit = fit_bifactor(Y, fidx, c, d["n_factors"], iters=600)
+    fit = fit_bifactor(Y, fidx, c, d["n_factors"], iters=800)
     DATA.mkdir(exist_ok=True)
     np.savez_compressed(
         DATA / "calibration.npz",

@@ -22,7 +22,7 @@ GROQ_API_KEY=... uv run gfb test groq/openai/gpt-oss-120b
 
 Any [LiteLLM](https://docs.litellm.ai/docs/providers) model name works: `ollama/`, `groq/`, `gemini/`, `openrouter/`, `openai/`, `anthropic/`, `nvidia_nim/` and 100+ others. Keys come from the provider's usual environment variable.
 
-The open-ended section uses a judge panel of free models (Groq, Gemini, OpenRouter free, local Ollama). Set `GROQ_API_KEY`, `GEMINI_API_KEY` and `OPENROUTER_API_KEY` (all have free tiers), and run `ollama pull qwen2.5-coder:7b nomic-embed-text`. Skip it with `--open 0`, or choose judges with `--judges ...`.
+The open-ended section uses a judge panel of free API models (Groq, Gemini, OpenRouter free). Set `GROQ_API_KEY`, `GEMINI_API_KEY` and `OPENROUTER_API_KEY` (all have free tiers), and run `ollama pull nomic-embed-text` for the novelty embeddings. Reference answers for all 30 prompts ship in the repo; the fixed opponent is `groq/openai/gpt-oss-20b`, which is not on the judge panel. Skip it with `--open 0`, or choose judges with `--judges ...`.
 
 ## What it measures
 
@@ -43,6 +43,9 @@ g and factor scores: 1000 = reference average, 200 points = 1 SD, unbounded. Fac
 3. Residuals are correlated across halves. Sampling noise in one half does not correlate with the other half, so only real shared skill remains.
 4. Parallel analysis sets the number of factors: eigenvalues above the 95th percentile of a null with shuffled model order.
 5. Subjects are clustered into that many groups. Each factor is named after its 3 most central subjects.
+6. In the item model, each factor's model scores start and stay at the observed leftover skill, so a factor cannot drift into noise.
+
+On the 395 reference models this finds 6 factors. g matches overall accuracy at r = 0.988, and each factor score matches its own leftover accuracy at r = 0.82 to 1.00.
 
 A simulated test with 3 planted skill groups recovers all 3 exactly.
 
@@ -61,12 +64,12 @@ A simulated test with 3 planted skill groups recovers all 3 exactly.
 
 ## Limits
 
-- The shipped reference answers cover 12 of the 30 open-ended prompts, because free-tier quotas ran out while building them. Run `uv run gfb build-reference groq/qwen/qwen3.8-27b groq/openai/gpt-oss-120b` with fresh quota to cover all 30. The first model listed is the fixed opponent.
 
 - The reference models are 2023 to 2024 open models. Strong modern models sit near the top of this scale, and the adaptive step then picks the hardest questions.
 - Calibration used log-likelihood scoring with few-shot prompts. This tool asks zero-shot and reads a letter or number, so item parameters transfer only approximately.
 - Odd tasks and open-ended scores are reported apart from g. They need 30+ tested models before they can be calibrated into the factor model.
-- Free API tiers have rate limits. The runner retries with backoff and counts API errors in the report.
+- Free API tiers have rate limits. The runner retries with backoff, counts API errors in the report, and leaves them out of the scores.
+- Reasoning models that use their whole token budget on thinking return empty text. That counts as an API error, not a wrong answer. Judges and reference answers request low reasoning effort.
 
 ## Credits
 
