@@ -30,12 +30,13 @@ def fit_bifactor(Y, fidx, c, n_factors, iters=1500, lr=0.05, seed=0, log=print):
 def _fit(Y, fidx, c, n_factors, iters, lr, seed, log, item_w=None, use_s=True, init=None, fix_g=False):
     """Joint MAP fit of item and person parameters by Adam.
 
-    Y: (models, items) 0/1 matrix. fidx: (items,) specific factor index. c: (items,) guessing floor.
+    Y: (models, items) scores in [0, 1] (fractions are soft labels); NaN = not tested, left out of the likelihood. fidx: (items,) specific factor index. c: (items,) guessing floor.
     Priors: theta ~ N(0, 1); raw loadings ~ N(0.5, 1) before softplus; b ~ N(0, 2^2).
     """
     rng = np.random.default_rng(seed)
     N, J = Y.shape
-    Y = Y.astype(np.float32)
+    M = (~np.isnan(Y)).astype(np.float32)
+    Y = np.nan_to_num(Y).astype(np.float32)
     c = c.astype(np.float32)
     onehot = np.zeros((J, n_factors), np.float32)
     onehot[np.arange(J), fidx] = 1
@@ -47,17 +48,21 @@ def _fit(Y, fidx, c, n_factors, iters, lr, seed, log, item_w=None, use_s=True, i
         "b": np.zeros(J, np.float32),
     }
     # start g at standardized total score so the sign of g is "more correct = higher"
-    tot = Y.mean(1)
+    tot = (Y * M).sum(1) / np.maximum(M.sum(1), 1)
     p["tg"] = ((tot - tot.mean()) / (tot.std() + 1e-9)).astype(np.float32)
     if init is not None:
         p["tg"] = init["theta_g"].astype(np.float32)
         # start each specific factor at its observed leftover: factor accuracy (logit) minus what g predicts
         for f in range(n_factors):
-            a = Y[:, fidx == f].mean(1)
+            n = M[:, fidx == f].sum(1)
+            a = (Y * M)[:, fidx == f].sum(1) / np.maximum(n, 1)
             lg = np.log((a + 0.01) / (1.01 - a))
             X = np.stack([np.ones(N), p["tg"], p["tg"] ** 2], 1)
-            r = lg - X @ np.linalg.lstsq(X, lg, rcond=None)[0]
-            p["ts"][:, f] = ((r - r.mean()) / (r.std() + 1e-9)).astype(np.float32)
+            ok = n > 0
+            r = np.zeros(N)
+            r[ok] = lg[ok] - X[ok] @ np.linalg.lstsq(X[ok], lg[ok], rcond=None)[0]
+            r[ok] = (r[ok] - r[ok].mean()) / (r[ok].std() + 1e-9)
+            p["ts"][:, f] = r.astype(np.float32)  # models never tested on this factor start at 0
         p["ag"] = np.log(np.expm1(np.maximum(init["a_g"], 1e-4))).astype(np.float32)
         p["b"] = init["b"].astype(np.float32)
     iw = np.ones(J, np.float32) if item_w is None else item_w.astype(np.float32)
@@ -69,7 +74,7 @@ def _fit(Y, fidx, c, n_factors, iters, lr, seed, log, item_w=None, use_s=True, i
         z = p["tg"][:, None] * ag[None] + (TS * as_[None] if use_s else 0) - p["b"][None]
         s = _sig(z)
         pr = np.clip(c + (1 - c) * s, 1e-6, 1 - 1e-6)
-        G = (Y / pr - (1 - Y) / (1 - pr)) * (1 - c) * s * (1 - s) * iw[None]  # dlogL/dz
+        G = (Y / pr - (1 - Y) / (1 - pr)) * (1 - c) * s * (1 - s) * iw[None] * M  # dlogL/dz
         grads = {
             "tg": G @ ag - p["tg"],
             "ts": (G * as_[None]) @ onehot - p["ts"],
@@ -96,7 +101,7 @@ def _fit(Y, fidx, c, n_factors, iters, lr, seed, log, item_w=None, use_s=True, i
         ts = ts - np.outer(tg, tg @ ts / len(tg))
         p["tg"], p["ts"] = tg, ts / (ts.std(0) + 1e-9)
         if t % 100 == 0 or t == 1:
-            ll = (Y * np.log(pr) + (1 - Y) * np.log(1 - pr)).sum() / Y.size
+            ll = (M * (Y * np.log(pr) + (1 - Y) * np.log(1 - pr))).sum() / M.sum()
             log(f"iter {t} mean loglik {ll:.4f}")
     return {
         "a_g": _softplus(p["ag"]), "a_s": _softplus(p["as"]), "b": p["b"], "c": c,

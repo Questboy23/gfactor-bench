@@ -20,13 +20,17 @@ def main(argv=None):
     t.add_argument("--open", type=int, default=8, help="judged open-ended tasks (0 to skip)")
     t.add_argument("--judges", nargs="*", help="judge models; default is a 5-model free panel")
     t.add_argument("--workers", type=int, default=4, help="parallel requests to the tested model")
+    t.add_argument("--bank", choices=["open", "frontier"], default="open",
+                   help="open: Open LLM Leaderboard v1 (395 open models, saturates near the top); "
+                        "frontier: MathArena olympiad math + LiveBench (frontier models)")
     t.add_argument("--out", default="reports")
     a = sub.add_parser("audit-judges", help="measure judge error rate, error correlation and consensus bias")
     a.add_argument("--judges", nargs="*")
     a.add_argument("-n", type=int, default=12)
     r = sub.add_parser("build-reference", help="(re)build reference answers for open-ended prompts")
     r.add_argument("models", nargs="+", help="first model's answers are the fixed opponent")
-    sub.add_parser("calibrate", help="refit item parameters from the Open LLM Leaderboard matrix")
+    cp = sub.add_parser("calibrate", help="refit item parameters (open: Open LLM Leaderboard v1; frontier: MathArena + LiveBench)")
+    cp.add_argument("bank", nargs="?", choices=["open", "frontier"], default="open")
     args = ap.parse_args(argv)
 
     if args.cmd == "test":
@@ -34,7 +38,7 @@ def main(argv=None):
         from .runner import run
         res = run(args.model, seed=args.seed, target_g=args.target_g, target_factor=args.target_factor,
                   max_items=args.max_items, batch=args.batch, n_odd=args.odd, n_open=args.open,
-                  judges=args.judges, workers=args.workers)
+                  judges=args.judges, workers=args.workers, bank=args.bank)
         path = write(res, args.out)
         g = res["g"]
         print(f"\ng = {g['score']:.0f} (90% interval {g['ci90'][0]:.0f} to {g['ci90'][1]:.0f}), spread = {res['spread']['score']:.0f}")
@@ -53,7 +57,7 @@ def main(argv=None):
         print("reference answers saved")
     elif args.cmd == "calibrate":
         from .calibrate import main as cal
-        cal([])
+        cal(["frontier"] if args.bank == "frontier" else [])
 
 
 if __name__ == "__main__":

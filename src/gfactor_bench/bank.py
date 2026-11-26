@@ -122,7 +122,33 @@ def _strip_think(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)
 
 
-def score(text: str, gold: str, kind: str) -> int:
+def _last_boxed(t):
+    i = t.rfind("\\boxed{")
+    if i < 0:
+        return None
+    i += 7
+    depth, j = 1, i
+    while j < len(t) and depth:
+        depth += {"{": 1, "}": -1}.get(t[j], 0)
+        j += 1
+    return t[i:j - 1] if depth == 0 else None
+
+
+def _same_math(a, b):
+    def n(x):
+        x = re.sub(r"\\(left|right|!|,|;|displaystyle)", "", str(x)).replace("dfrac", "frac").replace("tfrac", "frac")
+        x = re.sub(r"\\text\{([^}]*)\}", r"\1", x)
+        return re.sub(r"[\s$]", "", x).rstrip(".")
+    a, b = n(a), n(b)
+    if a == b:
+        return True
+    try:
+        return abs(float(a.replace(",", "")) - float(b.replace(",", ""))) < 1e-6
+    except ValueError:
+        return False
+
+
+def score(text: str, gold: str, kind: str) -> float:
     t = _strip_think(text)
     if kind == "mc":
         m = re.findall(r"[Aa]nswer\s*[:：]?\s*\**\(?([A-J])\b", t)
@@ -137,6 +163,19 @@ def score(text: str, gold: str, kind: str) -> int:
             return int(abs(float(m[-1].replace(",", "")) - float(gold)) < 1e-6)
         except ValueError:
             return 0
+    if kind == "boxed":  # MathArena final answers
+        got = _last_boxed(t)
+        return int(got is not None and _same_math(got, gold))
+    if kind == "connections":  # LiveBench: share of the 4-word groups found, a soft score in [0, 1]
+        m = re.findall(r"<solution>(.*?)</solution>", t, flags=re.S)
+        words = [w.strip(" *`'\".\n").lower() for w in (m[-1] if m else t.strip().splitlines()[-1] if t.strip() else "").split(",")]
+        want = [w.strip().lower() for w in gold.split(",")]
+        groups = [set(want[i:i + 4]) for i in range(0, len(want), 4)]
+        got = [set(words[i:i + 4]) for i in range(0, len(words), 4)]
+        return sum(g in got for g in groups) / len(groups)
+    if kind == "contains":  # LiveBench typos: the corrected text must appear verbatim
+        squash = lambda x: " ".join(x.split()).lower()  # noqa: E731
+        return int(squash(gold) in squash(t))
     if kind == "exact":
         m = re.findall(r"[Aa]nswer\s*[:：]\s*(.+)", t)
         ans = (m[-1] if m else t.strip().splitlines()[-1] if t.strip() else "").strip().strip("*`'\". ")

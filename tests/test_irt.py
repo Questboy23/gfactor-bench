@@ -51,3 +51,18 @@ def test_selection_is_random_but_informative():
     # dim 1 = factor 0; later picks may use g-loaded items that help through the g correlation
     assert all(fidx[p[0]] == 0 for p in picks)
     assert np.mean([fidx[j] == 0 for p in picks for j in p]) > 0.6
+
+
+def test_fit_with_missing_data_and_soft_labels():
+    # two leaderboards with different question sets, linked only by 40 models that took both;
+    # scores are averages of 4 attempts (soft labels), as in MathArena
+    Y, fidx, c, F, tg, ts, ag, as_, b = _sim(seed=3)
+    rng = np.random.default_rng(3)
+    pr = c + (1 - c) / (1 + np.exp(-(tg[:, None] * ag + ts[:, fidx] * as_ - b)))
+    soft = (rng.random((4, *Y.shape)) < pr).mean(0)
+    board = rng.integers(0, 2, Y.shape[1])
+    who = rng.integers(0, 2, Y.shape[0])
+    both = rng.random(Y.shape[0]) < 0.15
+    mask = (board[None] == who[:, None]) | both[:, None]
+    fit = fit_bifactor(np.where(mask, soft, np.nan), fidx, c, F, iters=600, log=lambda *_: None)
+    assert np.corrcoef(fit["theta_g"], tg)[0, 1] > 0.85

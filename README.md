@@ -2,7 +2,16 @@
 
 A psychometric test for AI models. It reports a general factor score (g), skill factors that the data finds on its own, a spread score, and a 90% interval on each.
 
-Scores are open-ended, like a game rating: 1000 is the average of 395 reference models and 200 points is one standard deviation. There is no ceiling or floor.
+Scores are open-ended, like a game rating: 1000 is the average of the reference models and 200 points is one standard deviation. There is no ceiling or floor.
+
+Two question banks, each with its own reference models:
+
+| Bank | Questions | Reference models | Use it for |
+|---|---|---|---|
+| `open` (default) | 28,659 Open LLM Leaderboard v1 questions: MMLU, ARC, HellaSwag, Winogrande, TruthfulQA, GSM8K | 395 open models from 2023 to 2024 | small and mid-size models |
+| `frontier` | 2,246 questions: MathArena olympiad math (AIME, HMMT, SMT, BRUMO, CMIMC, Kangaroo, Apex, IMO, USAMO, Putnam, IMC, arXiv research problems) and LiveBench (coding, instruction following, language puzzles) | 304 models, frontier and open, 2024 to 2026 | strong models that max out the open bank |
+
+Scores from the two banks sit on different scales. The banks share no models, so no link between them can be estimated.
 
 ```
 g = 1474 (90% interval 1408 to 1540), spread = 112
@@ -15,7 +24,7 @@ report: reports/<model>_<seed>.html
 
 ```mermaid
 flowchart TD
-  A["Old benchmark answers<br/>395 models x 28,659 questions"] --> B["General factor + skills emerge<br/>(calibrate.py, discover.py, irt.py)"]
+  A["Per-question leaderboard results<br/>open: 395 models x 28,659 questions<br/>frontier: 304 models x 2,246 (MathArena, LiveBench)"] --> B["General factor + skills emerge<br/>(calibrate.py, discover.py, irt.py)"]
   B --> C["Random draw: new seed, shuffled choices<br/>(runner.py, bank.py)"]
   C --> D["Ask, score, repeat<br/>widest 90% margin gets more questions"]
   D --> R["Report: score, spread, good and bad at<br/>(report.py)"]
@@ -28,8 +37,8 @@ flowchart TD
 ```bash
 git clone https://github.com/Questboy23/gfactor-bench && cd gfactor-bench
 uv sync
-uv run gfb test ollama/qwen3.5:9b             # any local Ollama model
-GROQ_API_KEY=... uv run gfb test groq/openai/gpt-oss-120b
+uv run gfb test ollama/qwen3.5:9b                            # any local Ollama model, open bank
+GROQ_API_KEY=... uv run gfb test groq/openai/gpt-oss-120b --bank frontier
 ```
 
 Any [LiteLLM](https://docs.litellm.ai/docs/providers) model name works: `ollama/`, `groq/`, `gemini/`, `openrouter/`, `openai/`, `anthropic/`, `nvidia_nim/` and 100+ others. Keys come from the provider's usual environment variable.
@@ -40,7 +49,7 @@ The open-ended section uses a judge panel of free API models (Groq, Gemini, Open
 
 | Part | Source | How it is scored |
 |---|---|---|
-| g and data-driven skill factors | 28,659 Open LLM Leaderboard questions (MMLU, ARC, HellaSwag, Winogrande, TruthfulQA, GSM8K) | Bifactor item response model calibrated on 395 models |
+| g and data-driven skill factors | `open` or `frontier` bank (table above) | Bifactor item response model calibrated on that bank's reference models |
 | Spread | the skill factors | SD of skill deviations from g, minus the part measurement noise explains |
 | Odd tasks | 8 generators: letter counting, ciphers, big arithmetic, sorting, word reversal, weekday math, grid positions, an invented language | Exact match, fresh items every run |
 | Open-ended | 30 prompts: poetry, advice, ideas, explanations | Pairwise judge panel versus reference answers, plus a novelty bonus |
@@ -53,16 +62,18 @@ g and factor scores: 1000 = reference average, 200 points = 1 SD, unbounded. Fac
 1. Accuracy per benchmark or MMLU subject for each reference model, computed on two random halves of the questions.
 2. g (the first principal component) is removed from both halves.
 3. Residuals are correlated across halves. Sampling noise in one half does not correlate with the other half, so only real shared skill remains.
-4. Parallel analysis sets the number of factors: eigenvalues above the 95th percentile of a null with shuffled model order.
-5. Subjects are clustered into that many groups. Each factor is named after its 3 most central subjects.
+4. Parallel analysis sets the number of factors: eigenvalues above the 95th percentile of a null that shuffles each subject's scores among the models tested on it.
+5. Removing g costs one dimension, so k significant eigenvalues mean k + 1 skill groups. Subjects are placed by their direction in those eigenvectors and clustered into k + 1 groups; groups under 3 subjects join their nearest group. Each factor is named after its 3 most central subjects.
 6. In the item model, each factor's model scores start and stay at the observed leftover skill, so a factor cannot drift into noise.
 
-On the 395 reference models this finds 6 factors. g matches overall accuracy at r = 0.988, and each factor score matches its own leftover accuracy at r = 0.82 to 1.00.
+Missing data is handled throughout. A model not tested on a question is left out of that question's likelihood, and two subjects' correlation counts only when at least 20 models took both. In the frontier bank only 12 models appear on both MathArena and LiveBench, so factors are found within each leaderboard: 6 in MathArena, 1 in LiveBench. Scores in [0, 1] work as soft labels: MathArena averages several attempts per problem and scores proofs as judge points over maximum points.
+
+On the 395 open-bank reference models this finds 6 factors. g matches overall accuracy at r = 0.988, and each factor score matches its own leftover accuracy at r = 0.82 to 1.00.
 
 A simulated test with 3 planted skill groups recovers all 3 exactly.
 
 
-1. **Calibration.** `tinyBenchmarks` (Polo et al. 2024, MIT) published right/wrong results of 395 models on every leaderboard question. `gfb calibrate` fits a bifactor 3PL model to that matrix: each question loads on g and on one skill factor, with a fixed guessing floor. The fitted parameters ship in `src/gfactor_bench/data/calibration.npz`, so users never download the matrix.
+1. **Calibration.** `tinyBenchmarks` (Polo et al. 2024, MIT) published right/wrong results of 395 models on every leaderboard question. MathArena and LiveBench publish every model's score on every question. `gfb calibrate` (open) and `gfb calibrate frontier` fit a bifactor 3PL model to each matrix: each question loads on g and on one skill factor, with a fixed guessing floor. DuckDB reads only the score columns of the MathArena and LiveBench parquet files by HTTP range requests, so the full model transcripts (several GB) are never downloaded. The fitted parameters ship in `src/gfactor_bench/data/`, so users never download any matrix.
 2. **Random draw.** Each run uses a new seed (saved in the report). It takes a random 40% slice of the bank, starts with 4 random questions per factor, and shuffles answer choices so memorized letters do not help.
 3. **Adaptive testing.** After each batch the model's abilities are re-estimated (MAP with a Laplace posterior). The factor with the widest 90% interval relative to its target gets the next batch: the questions that shrink that interval most, picked at random among the top 8 (randomesque exposure control). It stops when g is within ±80 points and each factor within ±130 (defaults), or at 300 questions.
 4. **Questions are fetched one row at a time** from the Hugging Face datasets-server API and cached in `~/.cache/gfactor-bench`. Nothing is bulk-downloaded.
@@ -88,7 +99,11 @@ Error correlation between judges is undefined so far: with 0 to 1 errors per jud
 ## Limits
 
 
-- The reference models are 2023 to 2024 open models. Strong modern models sit near the top of this scale, and the adaptive step then picks the hardest questions.
+- The open bank's reference models are 2023 to 2024 open models. Strong modern models sit near its top; use `--bank frontier` for them.
+- Frontier bank: 85% of the model-by-question matrix is missing, and only 12 models link MathArena with LiveBench, so the relative placement of the two leaderboards rests on those 12. Some MathArena factors partly track which models were evaluated when (2025 versus 2026 competitions).
+- Frontier bank: 1,432 of 2,246 questions can be asked at test time. Proofs, Lean, broken-problem sets, Kangaroo (no text answer), LiveBench coding, instruction following and plot unscrambling only shape the calibration. A factor with no askable questions shows 0 questions and a wide interval.
+- Frontier bank math answers are compared after light LaTeX normalization (`\dfrac` to `\frac`, spaces, `\left`/`\right`). Equivalent forms written differently, like `0.5` and `\frac{1}{2}`, count as wrong.
+- Open LLM Leaderboard v2 per-question files exist, but each model's file needs a logged-in Hugging Face account that accepted its terms, so v2 is not used.
 - Calibration used log-likelihood scoring with few-shot prompts. This tool asks zero-shot and reads a letter or number, so item parameters transfer only approximately.
 - Odd tasks and open-ended scores are reported apart from g. They need 30+ tested models before they can be calibrated into the factor model.
 - Free API tiers have rate limits. The runner retries with backoff, counts API errors in the report, and leaves them out of the scores.
@@ -99,11 +114,13 @@ Error correlation between judges is undefined so far: with 0 to 1 errors per jud
 - Response matrix: [tinyBenchmarks](https://github.com/felipemaiapolo/tinyBenchmarks) (MIT).
 - Idea of stitching benchmarks into one capability scale: [Epoch Capabilities Index](https://github.com/epoch-research/eci-public) (MIT). This repo works with single questions rather than whole benchmarks, and adds skill factors, adaptive testing and judges.
 - Questions come at runtime from MMLU, ARC, HellaSwag, Winogrande, TruthfulQA and GSM8K on Hugging Face, under their own licenses.
+- Frontier bank: [MathArena](https://matharena.ai) per-question results and problems (CC BY-NC-SA 4.0) and [LiveBench](https://livebench.ai) judgments and questions (Apache 2.0). `data/frontier_items.json` ships the askable problems with attribution under those licenses.
 - Model access: [LiteLLM](https://github.com/BerriAI/litellm).
 
 ## Development
 
 ```bash
 uv run pytest            # offline tests: model recovery, 90% interval coverage, parsers, generators
-uv run gfb calibrate     # refit item parameters (about 20 minutes on a laptop)
+uv run gfb calibrate             # refit the open bank (about 20 minutes on a laptop)
+uv run gfb calibrate frontier    # refit the frontier bank (about 5 minutes the first time, 15 seconds once cached)
 ```

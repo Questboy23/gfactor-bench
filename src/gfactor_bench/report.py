@@ -45,9 +45,9 @@ def _corr_chart(r):
     ax.set_yticks(range(len(M)), fc["factors"])
     for i in range(len(M)):
         for j in range(len(M)):
-            ax.text(j, i, f"{M[i, j]:.2f}", ha="center", va="center", fontsize=8, color="white" if M[i, j] > 0.6 else "black")
+            ax.text(j, i, "" if np.isnan(M[i, j]) else f"{M[i, j]:.2f}", ha="center", va="center", fontsize=8, color="white" if M[i, j] > 0.6 else "black")
     fig.colorbar(im, fraction=0.046)
-    ax.set_title("Skill correlations across 395 reference models", fontsize=9)
+    ax.set_title(f"Skill correlations across {r.get('n_ref', 395)} reference models", fontsize=9)
     return _png(fig)
 
 
@@ -55,7 +55,8 @@ def to_markdown(r):
     g = r["g"]
     lines = [f"# gfactor-bench report: {r['model']}", "",
              f"Seed {r['seed']}, {r['n_items']} calibrated questions, {r['seconds']} s, {r['api_errors']} API errors.", "",
-             "Scores are open-ended: 1000 is the average of 395 reference models, 200 points is one SD, no ceiling or floor.", "",
+             f"Scores are open-ended: 1000 is the average of the {r.get('n_ref', 395)} reference models in the {r.get('bank', 'open')} bank, "
+             "200 points is one SD, no ceiling or floor. Scores from different banks are on different scales.", "",
              "| Score | Value | 90% interval |", "|---|---|---|",
              f"| General factor (g) | {g['score']:.0f} | {g['ci90'][0]:.0f} to {g['ci90'][1]:.0f} |",
              f"| Spread across skills | {r['spread']['score']:.0f} | |", "",

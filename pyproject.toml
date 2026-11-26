@@ -5,6 +5,7 @@ description = "IQ-style psychometric test for AI models: general factor, skill f
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "duckdb>=2.0.1",
     "litellm>=1.111.0",
     "matplotlib>=3.11.2",
     "numpy>=2.5.5",

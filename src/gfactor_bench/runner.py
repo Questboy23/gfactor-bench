@@ -5,20 +5,25 @@ from __future__ import annotations
 import json
 import secrets
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
 
 from . import generators
 from .bank import fetch_rows, make_prompt, score
+from .discover import short
 from .irt import Z90, estimate_theta, loading_matrix, select_items
 from .models import chat_many
 
 DATA = Path(__file__).parent / "data"
 
 
-def load_calibration():
-    z = np.load(DATA / "calibration.npz", allow_pickle=False)
+BANKS = {"open": "calibration.npz", "frontier": "calibration_frontier.npz"}
+
+
+def load_calibration(bank="open"):
+    z = np.load(DATA / BANKS[bank], allow_pickle=False)
     return {k: z[k] for k in z.files}
 
 
@@ -50,23 +55,28 @@ def wilson90(k, n):
 
 
 def run(model, seed=None, target_g=80.0, target_factor=130.0, max_items=300, batch=15, start_per_factor=4,
-        pool_frac=0.4, n_odd=16, n_open=8, judges=None, workers=4, log=print, skip_open=False):
+        pool_frac=0.4, n_odd=16, n_open=8, judges=None, workers=4, log=print, skip_open=False, bank="open"):
     seed = seed if seed is not None else secrets.randbits(32)
     rng = np.random.default_rng(seed)
-    cal = load_calibration()
+    cal = load_calibration(bank)
+    served = json.loads((DATA / "frontier_items.json").read_text()) if bank == "frontier" else None
     sc = scales(cal)
     FACTORS = [str(x) for x in cal["factor_names"]]
     F = len(FACTORS)
     L = loading_matrix(cal["a_g"], cal["a_s"], cal["fidx"], F)
     b, c = cal["b"].astype(float), cal["c"].astype(float)
-    pool = np.flatnonzero(rng.random(len(b)) < pool_frac)  # a different random slice of the bank each run
+    can_ask = np.ones(len(b), bool) if served is None else np.array([f"{k}|{i}" in served for k, i in zip(cal["keys"], cal["idxs"])])
+    pool = np.flatnonzero((rng.random(len(b)) < pool_frac) & can_ask)  # a different random slice of the bank each run
     asked, ys, log_items, tried = [], [], [], set()
     t0 = time.time()
 
     def ask(idx):
-        pairs = [(str(cal["keys"][j]), int(cal["idxs"][j])) for j in idx]
-        rows = fetch_rows(pairs)
-        prompts = [make_prompt(k, r, rng) for (k, _), r in zip(pairs, rows)]
+        pairs = [(str(cal["keys"][j]), str(cal["idxs"][j])) for j in idx]
+        if served is None:
+            rows = fetch_rows([(k, int(i)) for k, i in pairs])
+            prompts = [make_prompt(k, r, rng) for (k, _), r in zip(pairs, rows)]
+        else:
+            prompts = [tuple(served[f"{k}|{i}"]) for k, i in pairs]
         outs = chat_many(model, [p for p, _, _ in prompts], workers=workers, max_tokens=4096)
         for j, (k, i), (p, gold, kind), o in zip(idx, pairs, prompts, outs):
             err = o.startswith("[error")
@@ -78,7 +88,7 @@ def run(model, seed=None, target_g=80.0, target_factor=130.0, max_items=300, bat
             log_items.append({"key": k, "row": i, "factor": FACTORS[cal["fidx"][j]], "gold": gold, "correct": y,
                               "error": err, "response_tail": o[-200:]})
 
-    start = [int(j) for f in range(F) for j in rng.choice(pool[cal["fidx"][pool] == f], start_per_factor, replace=False)]
+    start = [int(j) for f in range(F) for j in rng.permutation(pool[cal["fidx"][pool] == f])[:start_per_factor]]
     ask(start)
     while True:
         if not asked:
@@ -87,11 +97,13 @@ def run(model, seed=None, target_g=80.0, target_factor=130.0, max_items=300, bat
         th, cov = estimate_theta(L[A], b[A], c[A], np.array(ys, float))
         g, g_hw, s, s_hw = to_points(th, cov, sc)
         ratios = np.concatenate([[g_hw / target_g], s_hw / target_factor])
+        left = np.setdiff1d(pool, np.array(sorted(tried)))
+        ratios[1:][np.bincount(cal["fidx"][left], minlength=F) == 0] = 0  # no askable questions left for that factor
         log(f"items {len(asked)}  g {g:.1f} ±{g_hw:.1f}  widest {['g', *FACTORS][int(ratios.argmax())]} ±{max(g_hw, *s_hw):.1f}  {time.time() - t0:.0f}s")
-        if ratios.max() <= 1 or len(tried) >= max_items:
+        if ratios.max() <= 1 or len(tried) >= max_items or len(left) == 0:
             break
         dim = int(ratios.argmax())
-        cand = np.setdiff1d(pool, np.array(sorted(tried)))
+        cand = left
         if dim > 0:
             cand = cand[cal["fidx"][cand] == dim - 1]
         ask(select_items(L, b, c, th, cov, cand, dim, min(batch, max_items - len(tried)), rng))
@@ -113,10 +125,10 @@ def run(model, seed=None, target_g=80.0, target_factor=130.0, max_items=300, bat
         open_res = judge_answers(list(zip(pick, answers)), judges or DEFAULT_JUDGES, load_weights(), rng)
         log(f"open-ended win rate {open_res['win_rate']:.2f}, judge SD {open_res['judge_sd']:.2f}")
 
-    return summarize(model, seed, cal, sc, th, cov, asked, ys, log_items, odd_res, k_ok, open_res, time.time() - t0)
+    return summarize(model, seed, bank, cal, sc, th, cov, asked, ys, log_items, odd_res, k_ok, open_res, time.time() - t0)
 
 
-def summarize(model, seed, cal, sc, th, cov, asked, ys, log_items, odd_res, k_ok, open_res, secs):
+def summarize(model, seed, bank, cal, sc, th, cov, asked, ys, log_items, odd_res, k_ok, open_res, secs):
     FACTORS = [str(x) for x in cal["factor_names"]]
     g, g_hw, s, s_hw = to_points(th, cov, sc)
     # spread: SD of the skill deviations after removing what measurement noise alone would add
@@ -132,18 +144,20 @@ def summarize(model, seed, cal, sc, th, cov, asked, ys, log_items, odd_res, k_ok
     for k in sorted(set(keys)):
         m = keys == k
         if m.sum() >= 3:
-            resid.append({"subject": k.removeprefix("harness_hendrycksTest_").removeprefix("harness_").rsplit("_", 1)[0],
+            resid.append({"subject": short(k),
                           "n": int(m.sum()), "observed": float(np.mean(np.array(ys)[m])), "predicted": float(p[m].mean()),
                           "gap": float(np.mean(np.array(ys)[m]) - p[m].mean())})
     resid.sort(key=lambda r: -r["gap"])
 
-    # skill correlations across the 395 reference models, per factor (accuracy averaged over its subjects)
-    names = list(cal["subscore_names"])
-    fac_acc = np.stack([cal["ref_subscores"][:, cal["subject_factor"] == f].mean(1) for f in range(len(FACTORS))], 1)
-    corr = np.corrcoef(fac_acc.T)
+    # skill correlations across the reference models, per factor (accuracy averaged over its subjects);
+    # pairwise over the models tested on both factors
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        fac_acc = np.stack([np.nanmean(cal["ref_subscores"][:, cal["subject_factor"] == f], 1) for f in range(len(FACTORS))], 1)
+        corr = np.ma.corrcoef(np.ma.masked_invalid(fac_acc).T).filled(np.nan)
 
     return {
-        "model": model, "seed": seed, "seconds": round(secs), "n_items": len(asked),
+        "model": model, "seed": seed, "bank": bank, "n_ref": int(len(cal["ref_models"])), "seconds": round(secs), "n_items": len(asked),
         "api_errors": int(sum(x["error"] for x in log_items)),
         "g": {"score": float(g), "ci90": [float(g - g_hw), float(g + g_hw)]},
         "factors": {f: {"deviation": float(s[i]), "ci90": [float(s[i] - s_hw[i]), float(s[i] + s_hw[i])],
