@@ -1,75 +1,70 @@
 # gfactor-bench
 
-Status: plan only. No code yet.
+An IQ-style test for AI models. It reports a general factor (g), five skill factors, a spread score, and a 90% interval on each, the way psychometric tests report a full-scale score and index scores.
 
-Scores an AI model with one general factor (g), skill factor scores, and a spread number.
-Each score carries a 90% interval. Items are drawn at random from many benchmarks on every run.
+```
+g = 112.4 (90% interval 107.0 to 117.8), spread = 4.1
+  math                118.0  (+5.6 vs g, 90% -3.1 to +14.3)
+  stem                113.1  (+0.7 vs g, ...)
+  ...
+report: reports/<model>_<seed>.html
+```
 
-## Base
+## Quick start
 
-Fork of [epoch-research/eci-public](https://github.com/epoch-research/eci-public) (MIT).
-ECI fits one capability per model and a difficulty and slope per benchmark in PyMC.
-Its `bayesian.py` already returns equal-tailed intervals at any probability.
+```bash
+git clone https://github.com/Questboy23/gfactor-bench && cd gfactor-bench
+uv sync
+uv run gfb test ollama/qwen3.5:9b             # any local Ollama model
+GROQ_API_KEY=... uv run gfb test groq/openai/gpt-oss-120b
+```
 
-## Changes from ECI
+Any [LiteLLM](https://docs.litellm.ai/docs/providers) model name works: `ollama/`, `groq/`, `gemini/`, `openrouter/`, `openai/`, `anthropic/`, `nvidia_nim/` and 100+ others. Keys come from the provider's usual environment variable.
 
-| ECI | gfactor-bench |
-|---|---|
-| Whole-benchmark scores | Single questions, many per benchmark |
-| Published scores from many sources | Every model run under one setup (Inspect AI) |
-| One capability number | Bifactor: g plus 5 skill factors (math, code, knowledge, language, odd tasks) |
-| Fixed data | Seeded random draw per run, split across factors, randomesque pick among top 5 to 10 items |
-| No spread | Spread = SD of skill factors after removing g, minus expected noise |
-| Fixed sample | Adaptive: keep testing a factor until its 90% interval is under a target width or hits an item cap |
+The open-ended section uses a judge panel of free models (Groq, Gemini, OpenRouter free, local Ollama). Set `GROQ_API_KEY`, `GEMINI_API_KEY` and `OPENROUTER_API_KEY` (all have free tiers), and run `ollama pull gemma3:4b nomic-embed-text`. Skip it with `--open 0`, or choose judges with `--judges ...`.
 
-## Parts
+## What it measures
 
-1. Item bank: per-question results from Open LLM Leaderboard details on Hugging Face, plus BIG-bench odd tasks and template generators (random numbers, cipher keys).
-2. Fit: extend ECI's PyMC model from 1 factor to bifactor, items in place of benchmarks.
-3. Sampler: `numpy.random.default_rng(seed)`, new seed each run, seed saved in the report.
-4. Runner: Inspect AI; OpenRouter for API models, Ollama or vLLM for local.
-5. Adaptive loop: score, find widest 90% interval, draw more items for that factor, refit.
-6. Report: g and spread with 90% intervals, factor bars, skill correlation heatmap, 5 best and 5 worst tasks versus g prediction.
-7. Check: simulated models, confirm 90% intervals contain the true value about 90% of the time.
-
-## Judge panel for open-ended tasks (poetry, advice, ideas)
-
-- Judges: 5 to 7 free models from different families (Llama, Qwen, DeepSeek, Gemma, Mistral) spread over OpenRouter free, Groq, Gemini AI Studio, Cerebras and local Ollama. Run in parallel through Inspect AI's model-graded scorers.
-- Format: pairwise "A or B" with order swapped, fitted with Bradley-Terry (the RLHF and Chatbot Arena method). Sources: EQ-Bench Creative Writing, Arena-Hard, WildBench prompts.
-- Judge reliability without ground truth: `crowd-kit` (Dawid-Skene, MACE) estimates each judge's accuracy and bias from agreement patterns.
-- Measurable errors: planted pairs where one side is a damaged copy (inserted factual error, removed step, shuffled lines). The correct pick is known, so each judge's error rate and judge-to-judge error correlation are measured. Keep the judge set with lowest error correlation.
-- Consensus bias test: same argument, conclusion flipped between consensus and contrarian. Score gap = that judge's consensus bias; subtract it or drop the judge. Same swap test for order and length bias (length control as in AlpacaEval LC).
-- Blinding: strip names and sources, rewrite answers into one neutral style before judging. Rubric scores reasoning and evidence apart from agreement.
-- Uniqueness: novelty = embedding distance from 20 standard answers to the same prompt by several models (NoveltyBench idea). Final = quality + w * novelty, counted only when quality passes a threshold. Fit w on human preference data (LMArena creative writing votes).
-- Report: judge mean, judge SD (disagreement), 90% interval.
-
-## Fast data
-
-- No bulk download. DuckDB reads only the needed columns and rows of remote parquet (`hf://datasets/...`).
-- tinyBenchmarks needs about 100 anchor questions per benchmark, so most per-question data is never fetched.
-- About 200 models fit the model; the other thousands are skipped.
-- `hf_xet` for anything that must be downloaded.
-
-## Estimate
-
-Almost every part already exists, so the build is mostly glue code.
-
-| Part | Existing tool | Agent time |
+| Part | Source | How it is scored |
 |---|---|---|
-| Bifactor IRT fit, g plus skill factors | R `mirt` (`bfactor`) | 20 min |
-| Adaptive testing, stop when interval is narrow, randomesque pick | R `mirtCAT` | 20 min |
-| Item parameters for Open LLM Leaderboard questions | `tinyBenchmarks` | 15 min |
-| Random draws per run | Inspect AI `shuffle=True, seed=` and `numpy.random.default_rng` | 10 min |
-| Odd tasks | BIG-bench via Inspect evals | 15 min |
-| Running models | Inspect AI with OpenRouter or Ollama | 20 min |
-| 90% intervals, spread, report | mirt standard errors times 1.645, matplotlib | 30 min |
-| Interval check on simulated models | `mirt::simdata` | 20 min |
-| Judge panel, parallel free models | Inspect AI model-graded scorers | 1 hour |
-| Judge reliability | `crowd-kit` | 30 min |
-| Planted-error and consensus-flip tests | script | 1 hour |
-| Novelty score | `sentence-transformers` | 30 min |
-| DuckDB data loader | DuckDB `hf://` | 30 min |
-| Total | | 6 to 7 hours |
+| g and 5 skill factors (math, stem, humanities_social, commonsense, truthfulness) | 28,659 Open LLM Leaderboard questions (MMLU, ARC, HellaSwag, Winogrande, TruthfulQA, GSM8K) | Bifactor item response model calibrated on 395 models |
+| Spread | the 5 skill factors | SD of skill deviations from g, minus the part measurement noise explains |
+| Odd tasks | 8 generators: letter counting, ciphers, big arithmetic, sorting, word reversal, weekday math, grid positions, an invented language | Exact match, fresh items every run |
+| Open-ended | 30 prompts: poetry, advice, ideas, explanations | Pairwise judge panel versus reference answers, plus a novelty bonus |
 
-Real time depends more on downloads (several GB of per-question data) and API rate limits than on code.
-ECI's PyMC fit stays as a cross-check for g.
+Scores are on an IQ-style scale: 100 is the mean of the 395 reference models and 15 points is one SD.
+
+## How it works
+
+1. **Calibration.** `tinyBenchmarks` (Polo et al. 2024, MIT) published right/wrong results of 395 models on every leaderboard question. `gfb calibrate` fits a bifactor 3PL model to that matrix: each question loads on g and on one skill factor, with a fixed guessing floor. The fitted parameters ship in `src/gfactor_bench/data/calibration.npz`, so users never download the matrix.
+2. **Random draw.** Each run uses a new seed (saved in the report). It takes a random 40% slice of the bank, starts with 4 random questions per factor, and shuffles answer choices so memorized letters do not help.
+3. **Adaptive testing.** After each batch the model's abilities are re-estimated (MAP with a Laplace posterior). The factor with the widest 90% interval relative to its target gets the next batch: the questions that shrink that interval most, picked at random among the top 8 (randomesque exposure control). It stops when g is within ±6 points and each factor within ±10, or at 300 questions.
+4. **Questions are fetched one row at a time** from the Hugging Face datasets-server API and cached in `~/.cache/gfactor-bench`. Nothing is bulk-downloaded.
+5. **Judge panel.** Five free models from four families (OpenAI gpt-oss, Qwen, Gemini/Gemma, NVIDIA Nemotron) compare the tested answer with a fixed reference answer in both orders, which cancels position bias. Judges see a blind prompt that tells them to grade reasoning and craft, not agreement with popular opinion. Brand self-mentions are stripped. The report gives win rate, a 90% bootstrap interval over prompts and judges, and the SD between judges.
+6. **Novelty.** Distance of the answer's embedding from a pool of standard answers to the same prompt. It adds to the score only when the answer also beats the reference, so odd but bad answers earn nothing.
+7. **Judge audit** (`gfb audit-judges`). Each judge sees planted pairs where one side is a damaged copy (a dropped passage, shuffled sentences, a wrong number), so the right pick is known. This gives each judge's error rate and the correlation of errors between judges. Consensus pairs keep the same evidence and flip only the conclusion between consensus and contrarian. The score shift is that judge's consensus bias. Judge weights drop with error rate and bias.
+
+## Report
+
+`reports/<model>_<seed>.html` (also `.md` and `.json`) contains g and spread with 90% intervals and percentiles, each skill factor's index and deviation from g, odd-task and open-ended results, a judge table, the 5 best and 5 worst areas versus what g predicts, a factor chart, and a skill correlation heatmap across the reference models.
+
+## Limits
+
+- The reference models are 2023 to 2024 open models. Strong modern models sit near the top of this scale, and the adaptive step then picks the hardest questions.
+- Calibration used log-likelihood scoring with few-shot prompts. This tool asks zero-shot and reads a letter or number, so item parameters transfer only approximately.
+- Odd tasks and open-ended scores are reported apart from g. They need 30+ tested models before they can be calibrated into the factor model.
+- Free API tiers have rate limits. The runner retries with backoff and counts API errors in the report.
+
+## Credits
+
+- Response matrix: [tinyBenchmarks](https://github.com/felipemaiapolo/tinyBenchmarks) (MIT).
+- Idea of stitching benchmarks into one capability scale: [Epoch Capabilities Index](https://github.com/epoch-research/eci-public) (MIT). This repo works with single questions rather than whole benchmarks, and adds skill factors, adaptive testing and judges.
+- Questions come at runtime from MMLU, ARC, HellaSwag, Winogrande, TruthfulQA and GSM8K on Hugging Face, under their own licenses.
+- Model access: [LiteLLM](https://github.com/BerriAI/litellm).
+
+## Development
+
+```bash
+uv run pytest            # offline tests: model recovery, 90% interval coverage, parsers, generators
+uv run gfb calibrate     # refit item parameters (about 20 minutes on a laptop)
+```
