@@ -104,7 +104,7 @@ def loading_matrix(a_g, a_s, fidx, n_factors):
     return L
 
 
-def estimate_theta(L, b, c, y, iters=50):
+def estimate_theta(L, b, c, y, iters=200):
     """MAP ability with N(0, I) prior and Laplace posterior covariance.
 
     L: (n, D) loadings of answered items, y: (n,) 0/1. Returns (theta, cov).
@@ -120,6 +120,7 @@ def estimate_theta(L, b, c, y, iters=50):
         info = (w**2) / (pr * (1 - pr))  # expected information per item
         H = (L * info[:, None]).T @ L + np.eye(D)
         step = np.linalg.solve(H, grad)
+        step *= min(1.0, 0.5 / (np.abs(step).max() + 1e-12))  # damped Newton: 3PL surfaces make full steps oscillate
         th += step
         if np.abs(step).max() < 1e-6:
             break
