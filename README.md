@@ -11,6 +11,18 @@ g = 1474 (90% interval 1408 to 1540), spread = 112
 report: reports/<model>_<seed>.html
 ```
 
+## Pipeline
+
+```mermaid
+flowchart TD
+  A["Old benchmark answers<br/>395 models x 28,659 questions"] --> B["General factor + skills emerge<br/>(calibrate.py, discover.py, irt.py)"]
+  B --> C["Random draw: new seed, shuffled choices<br/>(runner.py, bank.py)"]
+  C --> D["Ask, score, repeat<br/>widest 90% margin gets more questions"]
+  D --> R["Report: score, spread, good and bad at<br/>(report.py)"]
+  W["Weird tasks, made fresh every run<br/>(generators.py)"] --> R
+  J["Judge panel of free models, bias-checked<br/>(judge.py)"] --> R
+```
+
 ## Quick start
 
 ```bash
